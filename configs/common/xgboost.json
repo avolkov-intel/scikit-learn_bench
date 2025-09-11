@@ -1,5 +1,14 @@
 {
     "PARAMETERS_SETS": {
+        "xgboost modelbuilders" : [
+            {
+                "algorithm": {
+                    "device": "cpu",
+                    "estimator_params": { "tree_method": "hist" },
+                    "enable_modelbuilders": [false, true]
+                }
+            }
+        ],
         "xgboost implementations": [
             {
                 "algorithm": {
