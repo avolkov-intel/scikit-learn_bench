@@ -3,7 +3,7 @@
         "common ensemble params": {
             "algorithm": {
                 "estimator_params": {
-                    "n_estimators": 500,
+                    "n_estimators": [4, 8, 16, 32, 43, 64, 86, 128, 172, 256, 500, 512],
                     "max_depth": 12,
                     "max_samples": 0.8,
                     "min_samples_split": 5,
@@ -21,7 +21,7 @@
                     "criterion": "gini",
                     "max_features": "sqrt",
                     "max_leaf_nodes": null,
-                    "n_jobs": "[SPECIAL_VALUE]physical_cpus"
+                    "n_jobs": "[SPECIAL_VALUE]available_cpus"
                 }
             }
         },
@@ -32,7 +32,7 @@
                     "criterion": "squared_error",
                     "max_features": 1.0,
                     "max_leaf_nodes": null,
-                    "n_jobs": "[SPECIAL_VALUE]physical_cpus"
+                    "n_jobs": "[SPECIAL_VALUE]available_cpus"
                 }
             }
         },
