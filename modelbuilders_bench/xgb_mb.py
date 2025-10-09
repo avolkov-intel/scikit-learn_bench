@@ -20,7 +20,11 @@ import bench
 import daal4py
 import numpy as np
 import xgboost as xgb
+import pickle
 
+from datetime import datetime
+now = datetime.now()
+formatted_time = now.strftime("%d_%m_%H%M")
 
 def convert_probs_to_classes(y_prob):
     return np.array([np.argmax(y_prob[i]) for i in range(y_prob.shape[0])])
@@ -85,6 +89,8 @@ parser.add_argument('--tree-method', type=str, required=True,
                     help='The tree construction algorithm used in XGBoost')
 
 params = bench.parse_args(parser)
+
+dataset_name = params.dataset_name
 
 X_train, X_test, y_train, y_test = bench.load_data(params)
 
@@ -168,34 +174,51 @@ train_metric = metric_func(
         params.objective),
     y_train)
 
+
+with open(f"xgb_model_gth_{dataset_name}_{formatted_time}.pkl", "wb") as out:
+    pickle.dump(booster, out)
+
 predict_time, y_pred = bench.measure_function_time(
     predict, None if params.inplace_predict or params.count_dmatrix else dtest, params=params)
 test_metric = metric_func(convert_xgb_predictions(y_pred, params.objective), y_test)
 
 transform_time, model_daal = bench.measure_function_time(
-    daal4py.get_gbt_model_from_xgboost, booster, params=params)
+    daal4py.mb.gbt_convertors.get_gbt_model_from_xgboost, booster, params=params)
 
+with open(f"xgb_model_daal_{dataset_name}_{formatted_time}.pkl", "wb") as out:
+    pickle.dump(model_daal, out)
+
+NUM_REPEATS = 10
+predict_times_daal = []
+daal_metrics = []
 if hasattr(params, 'n_classes'):
     predict_algo = daal4py.gbt_classification_prediction(
-        nClasses=params.n_classes, resultsToEvaluate='computeClassLabels', fptype='float')
-    predict_time_daal, daal_pred = bench.measure_function_time(
-        predict_algo.compute, X_test, model_daal, params=params)
-    test_metric_daal = metric_func(y_test, daal_pred.prediction)
+            nClasses=params.n_classes, resultsToEvaluate='computeClassLabels', fptype='float')
+
+    for i in range(NUM_REPEATS):
+        predict_time_daal, daal_pred = bench.measure_function_time(
+            predict_algo.compute, X_test, model_daal, params=params)
+        predict_times_daal.append(predict_time_daal)
+        test_metric_daal = metric_func(y_test, daal_pred.prediction)
+        daal_metrics.append(test_metric_daal)
 else:
     predict_algo = daal4py.gbt_regression_prediction()
-    predict_time_daal, daal_pred = bench.measure_function_time(
-        predict_algo.compute, X_test, model_daal, params=params)
-    test_metric_daal = metric_func(y_test, daal_pred.prediction)
+    
+    for i in range(NUM_REPEATS):
+        predict_time_daal, daal_pred = bench.measure_function_time(
+            predict_algo.compute, X_test, model_daal, params=params)
+        predict_times_daal.append(predict_time_daal)
+        test_metric_daal = metric_func(y_test, daal_pred.prediction)
+        daal_metrics.append(test_metric_daal)
 
 bench.print_output(
     library='modelbuilders', algorithm=f'xgboost_{task}_and_modelbuilder',
     stages=['training_preparation', 'training', 'prediction_preparation', 'prediction',
-            'transformation', 'alternative_prediction'],
+            'transformation'] + ['alternative_prediction'] * NUM_REPEATS, # for i in range(NUM_REPEATS)],
     params=params,
     functions=['xgb.dmatrix.train', 'xgb.train', 'xgb.dmatrix.test', 'xgb.predict',
-               'daal4py.get_gbt_model_from_xgboost', 'daal4py.compute'],
-    times=[t_creat_train, fit_time, t_creat_test, predict_time, transform_time,
-           predict_time_daal],
+               'daal4py.get_gbt_model_from_xgboost'] + ['daal4py.compute'] * NUM_REPEATS,
+    times=[t_creat_train, fit_time, t_creat_test, predict_time, transform_time] + predict_times_daal,
     metric_type=metric_name,
-    metrics=[None, train_metric, None, test_metric, None, test_metric_daal],
-    data=[X_train, X_train, X_test, X_test, X_test, X_test])
+    metrics=[None, train_metric, None, test_metric, None] + daal_metrics,
+    data=[X_train, X_train, X_test, X_test, X_test, X_test] + [X_test] * NUM_REPEATS)

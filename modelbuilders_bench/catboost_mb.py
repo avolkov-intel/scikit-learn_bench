@@ -189,21 +189,38 @@ for i, func in enumerate(metric_func):
         y_pred, params.objective, metric_name[i], class_labels))
 
 transform_time, model_daal = bench.measure_function_time(
-    daal4py.get_gbt_model_from_catboost, booster, params=params)
+    daal4py.mb.gbt_convertors.get_gbt_model_from_catboost, booster, params=params)
+
+NUM_REPEATS = 10
+predict_times_daal = []
+daal_metrics = []
 
 if hasattr(params, 'n_classes'):
     predict_algo = daal4py.gbt_classification_prediction(
         nClasses=params.n_classes,
         resultsToEvaluate='computeClassProbabilities',
         fptype='float')
-    predict_time_daal, daal_pred = bench.measure_function_time(
-        predict_algo.compute, X_test, model_daal, params=params)
-    daal_pred_value = daal_pred.probabilities
+
+    for i in range(NUM_REPEATS):
+        predict_time_daal, daal_pred = bench.measure_function_time(
+            predict_algo.compute, X_test, model_daal, params=params)
+        daal_pred_value = daal_pred.probabilities
+
+        predict_times_daal.append(predict_time_daal)
+        daal_metrics.append(daal_pred_value)
+    
+    # predict_time_daal, daal_pred = bench.measure_function_time(
+    #     predict_algo.compute, X_test, model_daal, params=params)
+    # daal_pred_value = daal_pred.probabilities
 else:
     predict_algo = daal4py.gbt_regression_prediction()
-    predict_time_daal, daal_pred = bench.measure_function_time(
-        predict_algo.compute, X_test, model_daal, params=params)
-    daal_pred_value = daal_pred.prediction
+    for i in range(NUM_REPEATS):
+        predict_time_daal, daal_pred = bench.measure_function_time(
+            predict_algo.compute, X_test, model_daal, params=params)
+        daal_pred_value = daal_pred.prediction
+
+        predict_times_daal.append(predict_time_daal)
+        daal_metrics.append(daal_pred_value)
 
 # Metrics for alternative_prediction
 for i, func in enumerate(metric_func):
@@ -218,23 +235,23 @@ bench.print_output(
         'training',
         'prediction_preparation',
         'prediction',
-        'transformation',
-        'alternative_prediction'],
+        'transformation'] + 
+        ['alternative_prediction'] * NUM_REPEATS,
     params=params,
     functions=[
         'cb.Pool.train',
         'cb.fit',
         'cb.Pool.test',
         'cb.predict',
-        'daal4py.get_gbt_model_from_catboost',
-        'daal4py.compute'],
+        'daal4py.get_gbt_model_from_catboost'] +
+        ['daal4py.compute'] * NUM_REPEATS,
     times=[
         t_create_train,
         fit_time,
         t_create_test,
         predict_time,
-        transform_time,
-        predict_time_daal],
+        transform_time] + 
+        predict_times_daal,
     metric_type=metric_name,
     metrics=metrics,
     data=[
@@ -242,5 +259,5 @@ bench.print_output(
         X_train,
         X_test,
         X_test,
-        X_test,
-        X_test])
+        X_test] +
+        [X_test] * num_repeats)

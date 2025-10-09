@@ -1,0 +1,80 @@
+{
+    "common": {
+        "lib": "modelbuilders",
+        "data-format": "pandas",
+        "data-order": "F",
+        "dtype": "float32",
+        "algorithm": "lgbm_mb"
+    },
+    "cases": [
+        {
+            "dataset": [
+                {
+                    "source": "npy",
+                    "name": "abalone",
+                    "training": {
+                        "x": "data/abalone_x_train.npy",
+                        "y": "data/abalone_y_train.npy"
+                    },
+                    "testing": {
+                        "x": "data/abalone_x_test.npy",
+                        "y": "data/abalone_y_test.npy"
+                    }
+                }
+            ],
+            "learning-rate": 0.03,
+            "max-depth": 6,
+            "max-leaves": 256,
+            "n-estimators": [1000],
+            "objective": "regression"
+        },
+        {
+            "dataset": [
+                {
+                    "source": "npy",
+                    "name": "airline-ohe",
+                    "training": {
+                        "x": "data/airline-ohe_x_train.npy",
+                        "y": "data/airline-ohe_y_train.npy"
+                    },
+                    "testing": {
+                        "x": "data/airline-ohe_x_test.npy",
+                        "y": "data/airline-ohe_y_test.npy"
+                    }
+                }
+            ],
+            "reg-alpha": 0.9,
+            "max-bin": 256,
+            "scale-pos-weight": 2,
+            "learning-rate": 0.1,
+            "subsample": 1,
+            "reg-lambda": 1,
+            "min-child-weight": 0,
+            "max-depth": 8,
+            "max-leaves": 256,
+            "n-estimators": 1000,
+            "objective": "binary"
+        },
+        {
+            "dataset": [
+                {
+                    "source": "npy",
+                    "name": "letters",
+                    "training": {
+                        "x": "data/letters_x_train.npy",
+                        "y": "data/letters_y_train.npy"
+                    },
+                    "testing": {
+                        "x": "data/letters_x_test.npy",
+                        "y": "data/letters_y_test.npy"
+                    }
+                }
+            ],
+            "learning-rate": 0.03,
+            "max-depth": 6,
+            "max-leaves": 256,
+            "n-estimators": 1000,
+            "objective": "multiclass"
+        }
+    ]
+}

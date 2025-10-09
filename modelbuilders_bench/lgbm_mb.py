@@ -118,8 +118,7 @@ t_creat_test, lgbm_test = bench.measure_function_time(lgbm.Dataset, X_test, y_te
 t_train, model_lgbm = bench.measure_function_time(lgbm.train, lgbm_params, lgbm_train,
                                                   params=params,
                                                   num_boost_round=params.n_estimators,
-                                                  valid_sets=lgbm_train,
-                                                  verbose_eval=False)
+                                                  valid_sets=lgbm_train)
 train_metric = None
 if not X_train.equals(X_test):
     y_train_pred = model_lgbm.predict(X_train)
@@ -130,29 +129,49 @@ t_lgbm_pred, y_test_pred = bench.measure_function_time(model_lgbm.predict, X_tes
 test_metric_lgbm = metric_func(y_test, y_test_pred)
 
 t_trans, model_daal = bench.measure_function_time(
-    daal4py.get_gbt_model_from_lightgbm, model_lgbm, params=params)
+    daal4py.mb.gbt_convertors.get_gbt_model_from_lightgbm, model_lgbm, params=params)
+
+NUM_REPEATS = 10
+predict_times_daal = []
+daal_metrics = []
 
 if hasattr(params, 'n_classes'):
     predict_algo = daal4py.gbt_classification_prediction(
         nClasses=params.n_classes, resultsToEvaluate='computeClassLabels', fptype='float')
-    t_daal_pred, daal_pred = bench.measure_function_time(
-        predict_algo.compute, X_test, model_daal, params=params)
-    test_metric_daal = metric_func(y_test, daal_pred.prediction)
+
+    for i in range(NUM_REPEATS):
+        predict_time_daal, daal_pred = bench.measure_function_time(
+            predict_algo.compute, X_test, model_daal, params=params)
+        predict_times_daal.append(t_trans)
+        predict_times_daal.append(predict_time_daal)
+        test_metric_daal = metric_func(y_test, daal_pred.prediction)
+        daal_metrics.append(test_metric_daal)
+    # t_daal_pred, daal_pred = bench.measure_function_time(
+    #     predict_algo.compute, X_test, model_daal, params=params)
+    # test_metric_daal = metric_func(y_test, daal_pred.prediction)
 else:
     predict_algo = daal4py.gbt_regression_prediction()
-    t_daal_pred, daal_pred = bench.measure_function_time(
-        predict_algo.compute, X_test, model_daal, params=params)
-    test_metric_daal = metric_func(y_test, daal_pred.prediction)
+
+    for i in range(NUM_REPEATS):
+        predict_time_daal, daal_pred = bench.measure_function_time(
+            predict_algo.compute, X_test, model_daal, params=params)
+        predict_times_daal.append(t_trans)
+        predict_times_daal.append(predict_time_daal)
+        test_metric_daal = metric_func(y_test, daal_pred.prediction)
+        daal_metrics.append(test_metric_daal)
+    # t_daal_pred, daal_pred = bench.measure_function_time(
+    #     predict_algo.compute, X_test, model_daal, params=params)
+    # test_metric_daal = metric_func(y_test, daal_pred.prediction)
 
 utils.print_output(
     library='modelbuilders',
     algorithm=f'lightgbm_{task}_and_modelbuilder',
-    stages=['lgbm_train', 'lgbm_predict', 'daal4py_predict'],
+    stages=['lgbm_train', 'lgbm_predict'] + ['daal4py_predict'] * NUM_REPEATS,
     params=params,
     functions=['lgbm_dataset', 'lgbm_dataset', 'lgbm_train',
-               'lgbm_predict', 'lgbm_to_daal', 'daal_compute'],
-    times=[t_creat_train, t_train, t_creat_test, t_lgbm_pred, t_trans, t_daal_pred],
+               'lgbm_predict', 'lgbm_to_daal'] + ['daal_compute'] * NUM_REPEATS,
+    times=[t_creat_train, t_train, t_creat_test, t_lgbm_pred] + predict_times_daal,
     metric_type=metric_name,
-    metrics=[train_metric, test_metric_lgbm, test_metric_daal],
-    data=[X_train, X_test, X_test],
+    metrics=[train_metric, test_metric_lgbm] + daal_metrics,
+    data=[X_train, X_test] + [X_test] * NUM_REPEATS,
 )
