@@ -428,12 +428,75 @@ def read_csv(filename, params):
 
     return data
 
+def load_test_data(params, generated_data=[], add_dtype=False, label_2d=False,
+              int_label=False):
+
+    full_data = {
+         file: None for file in ['X_test', 'y_test']
+    }
+    param_vars = vars(params)
+
+    int_dtype = np.int32 if '32' in str(params.dtype) else np.int64
+    for element in full_data:
+        file_arg = f'file_{element}'
+        # load and convert data from npy/csv file if path is specified
+        new_dtype = int_dtype if 'y' in element and int_label else params.dtype
+        if param_vars[file_arg] is not None:
+            if param_vars[file_arg].name.endswith('.npy'):
+                data = np.load(param_vars[file_arg].name, allow_pickle=True)
+            else:
+                data = read_csv(param_vars[file_arg].name, params)
+            full_data[element] = convert_data(
+                data,
+                new_dtype,
+                params.data_order, params.data_format
+            )
+        if full_data[element] is None:
+            # generate and convert data if it's marked and path isn't specified
+            if element in generated_data:
+                full_data[element] = convert_data(
+                    np.random.rand(*params.shape),
+                    new_dtype,
+                    params.data_order, params.data_format)
+        # generate and convert data if it's marked and path isn't specified
+        if full_data[element] is None and element in generated_data:
+            full_data[element] = convert_data(
+                np.random.rand(*params.shape),
+                int_dtype if 'y' in element and int_label else params.dtype,
+                params.data_order, params.data_format)
+        # convert existing labels from 1- to 2-dimensional
+        # if it's forced and possible
+        if full_data[element] is not None and 'y' in element \
+                and label_2d and hasattr(full_data[element], 'reshape'):
+            full_data[element] = full_data[element].reshape(
+                (full_data[element].shape[0], 1))
+        # add dtype property to data if it's needed and doesn't exist
+        if full_data[element] is not None and add_dtype and \
+                not hasattr(full_data[element], 'dtype'):
+            if hasattr(full_data[element], 'values'):
+                full_data[element].dtype = full_data[element].values.dtype
+            elif hasattr(full_data[element], 'dtypes'):
+                full_data[element].dtype = full_data[element].dtypes[0].type
+
+    params.dtype = get_dtype(full_data['X_test'])
+    # add size to parameters which is need for some cases
+    if not hasattr(params, 'size'):
+        params.size = size_str(full_data['X_test'].shape)
+
+    # clone train data to test if test data is None
+    # for data in ['X', 'y']:
+    #     if full_data[f'{data}_train'] is not None and full_data[f'{data}_test'] is None:
+    #         full_data[f'{data}_test'] = full_data[f'{data}_train']
+    return tuple(full_data.values())
+
+
 
 def load_data(params, generated_data=[], add_dtype=False, label_2d=False,
               int_label=False):
     full_data = {
         file: None for file in ['X_train', 'X_test', 'y_train', 'y_test']
     }
+
     param_vars = vars(params)
     int_dtype = np.int32 if '32' in str(params.dtype) else np.int64
     for element in full_data:

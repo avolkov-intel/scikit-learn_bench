@@ -92,7 +92,8 @@ params = bench.parse_args(parser)
 
 dataset_name = params.dataset_name
 
-X_train, X_test, y_train, y_test = bench.load_data(params)
+#X_train, X_test, y_train, y_test = bench.load_data(params)
+X_test, y_test = bench.load_test_data(params)
 
 xgb_params = {
     'booster': 'gbtree',
@@ -131,10 +132,10 @@ else:
     task = 'classification'
     metric_name = 'accuracy'
     metric_func = bench.accuracy_score
-    if 'cudf' in str(type(y_train)):
-        params.n_classes = y_train[y_train.columns[0]].nunique()
+    if 'cudf' in str(type(y_test)):
+        params.n_classes = y_test[y_test.columns[0]].nunique()
     else:
-        params.n_classes = len(np.unique(y_train))
+        params.n_classes = len(np.unique(y_test))
 
     # Covtype has one class more than there is in train
     if params.dataset_name == 'covtype':
@@ -143,16 +144,17 @@ else:
     if params.n_classes > 2:
         xgb_params['num_class'] = params.n_classes
 
-t_creat_train, dtrain = bench.measure_function_time(xgb.DMatrix, X_train,
-                                                    params=params, label=y_train)
+#t_creat_train, dtrain = bench.measure_function_time(xgb.DMatrix, X_train,
+#                                                    params=params, label=y_train)
 t_creat_test, dtest = bench.measure_function_time(
     xgb.DMatrix, X_test, params=params, label=y_test)
 
+t_creat_train = 0
 
-def fit(dmatrix):
-    if dmatrix is None:
-        dmatrix = xgb.DMatrix(X_train, y_train)
-    return xgb.train(xgb_params, dmatrix, params.n_estimators)
+# def fit(dmatrix):
+#     if dmatrix is None:
+#         dmatrix = xgb.DMatrix(X_train, y_train)
+#     return xgb.train(xgb_params, dmatrix, params.n_estimators)
 
 
 if params.inplace_predict:
@@ -166,29 +168,57 @@ else:
         return booster.predict(dmatrix)
 
 
-fit_time, booster = bench.measure_function_time(
-    fit, None if params.count_dmatrix else dtrain, params=params)
-train_metric = metric_func(
-    convert_xgb_predictions(
-        booster.predict(dtrain),
-        params.objective),
-    y_train)
+# fit_time, booster = bench.measure_function_time(
+#     fit, None if params.count_dmatrix else dtrain, params=params)
+# train_metric = metric_func(
+#     convert_xgb_predictions(
+#         booster.predict(dtrain),
+#         params.objective),
+#     y_train)
 
 
-with open(f"xgb_model_gth_{dataset_name}_{formatted_time}.pkl", "wb") as out:
-    pickle.dump(booster, out)
+fit_time = 0
+train_metric = 0
 
-predict_time, y_pred = bench.measure_function_time(
-    predict, None if params.inplace_predict or params.count_dmatrix else dtest, params=params)
-test_metric = metric_func(convert_xgb_predictions(y_pred, params.objective), y_test)
+import os
+import fnmatch
+
+def get_pretrained_model():
+    files = [f for f in os.listdir("mb_models") if fnmatch.fnmatch(f, f"xgb_model_gth_{dataset_name}*")]
+    assert (len(files) > 0)
+    #print("Loading model from " + files[0])
+    with open("mb_models/" + files[0], "rb") as f:
+        booster = pickle.load(f)
+    return booster
+
+booster = get_pretrained_model()
+
+# with open(f"mb_models/xgb_model_gth_{dataset_name}_{formatted_time}.pkl", "wb") as out:
+#     pickle.dump(booster, out)
+
+NUM_REPEATS = 10
+
+predict_times_xgb = []
+xgb_metrics = []
+
+for i in range(NUM_REPEATS):
+    predict_time, y_pred = bench.measure_function_time(predict, None if params.inplace_predict or params.count_dmatrix else dtest, params=params)
+    test_metric = metric_func(convert_xgb_predictions(y_pred, params.objective), y_test)
+    predict_times_xgb.append(predict_time)
+    xgb_metrics.append(test_metric)
+
+
+# predict_time, y_pred = bench.measure_function_time(
+#     predict, None if params.inplace_predict or params.count_dmatrix else dtest, params=params)
+# test_metric = metric_func(convert_xgb_predictions(y_pred, params.objective), y_test)
 
 transform_time, model_daal = bench.measure_function_time(
     daal4py.mb.gbt_convertors.get_gbt_model_from_xgboost, booster, params=params)
 
-with open(f"xgb_model_daal_{dataset_name}_{formatted_time}.pkl", "wb") as out:
-    pickle.dump(model_daal, out)
+# with open(f"mb_models/xgb_model_daal_{dataset_name}_{formatted_time}.pkl", "wb") as out:
+#     pickle.dump(model_daal, out)
 
-NUM_REPEATS = 10
+
 predict_times_daal = []
 daal_metrics = []
 if hasattr(params, 'n_classes'):
@@ -203,7 +233,6 @@ if hasattr(params, 'n_classes'):
         daal_metrics.append(test_metric_daal)
 else:
     predict_algo = daal4py.gbt_regression_prediction()
-    
     for i in range(NUM_REPEATS):
         predict_time_daal, daal_pred = bench.measure_function_time(
             predict_algo.compute, X_test, model_daal, params=params)
@@ -211,14 +240,16 @@ else:
         test_metric_daal = metric_func(y_test, daal_pred.prediction)
         daal_metrics.append(test_metric_daal)
 
+# data=[X_train, X_train, X_test, X_test] + [X_test] * NUM_REPEATS + [X_test] + [X_test] * NUM_REPEATS)
+
 bench.print_output(
     library='modelbuilders', algorithm=f'xgboost_{task}_and_modelbuilder',
-    stages=['training_preparation', 'training', 'prediction_preparation', 'prediction',
-            'transformation'] + ['alternative_prediction'] * NUM_REPEATS, # for i in range(NUM_REPEATS)],
+    stages=['training_preparation', 'training', 'prediction_preparation'] + ['prediction'] * NUM_REPEATS +
+            ['transformation'] + ['alternative_prediction'] * NUM_REPEATS, # for i in range(NUM_REPEATS)],
     params=params,
-    functions=['xgb.dmatrix.train', 'xgb.train', 'xgb.dmatrix.test', 'xgb.predict',
-               'daal4py.get_gbt_model_from_xgboost'] + ['daal4py.compute'] * NUM_REPEATS,
-    times=[t_creat_train, fit_time, t_creat_test, predict_time, transform_time] + predict_times_daal,
+    functions=['xgb.dmatrix.train', 'xgb.train', 'xgb.dmatrix.test'] + ['xgb.predict'] * NUM_REPEATS +
+               ['daal4py.get_gbt_model_from_xgboost'] + ['daal4py.compute'] * NUM_REPEATS,
+    times=[t_creat_train, fit_time, t_creat_test] + predict_times_xgb + [transform_time] + predict_times_daal,
     metric_type=metric_name,
-    metrics=[None, train_metric, None, test_metric, None] + daal_metrics,
-    data=[X_train, X_train, X_test, X_test, X_test, X_test] + [X_test] * NUM_REPEATS)
+    metrics=[None, train_metric, None] + xgb_metrics + [None] + daal_metrics,
+    data=[X_test, X_test, X_test, X_test] + [X_test] * NUM_REPEATS + [X_test] + [X_test] * NUM_REPEATS)
