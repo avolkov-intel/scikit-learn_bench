@@ -20,7 +20,7 @@ from typing import Dict, List
 
 import numpy as np
 import pandas as pd
-from psutil import cpu_count
+from psutil import cpu_count, Process
 from sklearn.metrics import euclidean_distances
 
 from ..datasets import dataset_loading_functions
@@ -196,7 +196,9 @@ def assign_case_special_values_on_run(
     if is_special_value(n_jobs):
         n_jobs = n_jobs.replace(SP_VALUE_STR, "")
         if n_jobs.startswith("physical_cpus"):
-            n_cpus = cpu_count(logical=False)
+            p = Process()
+            n_cpus = len(p.cpu_affinity())
+            #n_cpus = cpu_count(logical=False)
         elif n_jobs.startswith("logical_cpus"):
             n_cpus = cpu_count(logical=True)
         else:
