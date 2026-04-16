@@ -2,7 +2,7 @@
 # See envs/requirements-sklearn.txt for other requirements
 # that are needed to profile all the libraries being tested
 scikit-learn
-pandas
+pandas<3.0
 tabulate
 fastparquet
 h5py
